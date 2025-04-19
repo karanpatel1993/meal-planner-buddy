@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Meal Planner Pro</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Meal Planner Pro</h1>
+
+      <div class="form-section">
+        <label for="apiKey">Gemini API Key:</label>
+        <input
+          type="password"
+          id="apiKey"
+          placeholder="Enter your Gemini API key"
+        />
+
+        <label for="startDate">Start Date:</label>
+        <input type="date" id="startDate" />
+
+        <label for="dietaryPrefs">Dietary Preferences:</label>
+        <select id="dietaryPrefs">
+          <option value="none">No Restrictions</option>
+          <option value="vegetarian">Vegetarian</option>
+          <option value="vegan">Vegan</option>
+          <option value="keto">Keto</option>
+          <option value="paleo">Paleo</option>
+        </select>
+
+        <label for="ingredients">Available Ingredients (one per line):</label>
+        <textarea
+          id="ingredients"
+          placeholder="Enter ingredients with quantities:
+2 chicken breasts
+1 cup rice
+500g potatoes"
+        ></textarea>
+
+        <button id="generatePlan">Generate Meal Plan</button>
+      </div>
+
+      <div id="loadingSpinner" class="hidden">Generating your meal plan...</div>
+
+      <div id="mealPlanResults" class="hidden">
+        <h2>Your Weekly Meal Plan</h2>
+        <div id="mealPlanContainer"></div>
+
+        <h2>Shopping List</h2>
+        <div id="shoppingList"></div>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>
