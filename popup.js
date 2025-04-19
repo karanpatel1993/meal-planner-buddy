@@ -115,15 +115,20 @@ class MealPlanner {
     const dietaryPrefs = this.dietaryPrefsSelect.value;
     const startDate = this.startDateInput.value;
 
-    return `Generate a weekly meal plan starting from ${startDate} with the following parameters:
+    return `Generate a one-day Indian meal plan for ${startDate} with the following parameters:
     Available Ingredients: ${ingredients}
     Dietary Preferences: ${dietaryPrefs}
     
-    Please provide:
-    1. 3 meals per day (breakfast, lunch, dinner) for 7 days
-    2. For each meal, indicate which ingredients from the provided list will be used
-    3. Highlight any missing ingredients needed for each recipe
-    4. Create a shopping list of all missing ingredients
+    Please provide authentic Indian cuisine for:
+    1. Breakfast: Traditional Indian breakfast dishes (e.g., idli, dosa, poha, paratha)
+    2. Lunch: Complete Indian thali with main dish, dal, rice/roti, and accompaniments
+    3. Dinner: Balanced Indian dinner menu
+    
+    For each meal:
+    - Provide authentic Indian recipe names (with English translations if needed)
+    - List which ingredients from the provided list will be used
+    - Highlight any missing ingredients needed for each recipe
+    - Include brief cooking instructions
     
     Format the response as JSON with this structure:
     {
@@ -133,8 +138,10 @@ class MealPlanner {
           "meals": {
             "breakfast": {
               "recipe": "Recipe name",
+              "description": "Brief description",
               "usedIngredients": ["ingredient1", "ingredient2"],
-              "missingIngredients": ["ingredient3", "ingredient4"]
+              "missingIngredients": ["ingredient3", "ingredient4"],
+              "instructions": "Brief cooking steps"
             },
             "lunch": {...},
             "dinner": {...}
@@ -215,6 +222,7 @@ class MealPlanner {
     return `
       <div class="meal">
         <h4>${mealType}: ${meal.recipe}</h4>
+        <p class="description">${meal.description}</p>
         <p>Using: ${meal.usedIngredients.join(", ")}</p>
         ${
           meal.missingIngredients.length
@@ -223,6 +231,10 @@ class MealPlanner {
               )}</p>`
             : ""
         }
+        <div class="instructions">
+          <h5>Cooking Instructions:</h5>
+          <p>${meal.instructions}</p>
+        </div>
       </div>
     `;
   }

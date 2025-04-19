@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Meal Planner Pro",
   "version": "1.0",
-  "description": "Generate weekly meal plans using Gemini AI",
+  "description": "Generate daily Indian meal plans using Gemini AI",
   "permissions": ["storage"],
   "action": {
     "default_popup": "popup.html",

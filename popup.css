@@ -57,6 +57,31 @@ button:hover {
   border-radius: 4px;
 }
 
+.meal {
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.description {
+  font-style: italic;
+  color: #666;
+  margin: 8px 0;
+}
+
+.instructions {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #fff;
+  border-left: 3px solid #4caf50;
+}
+
+.instructions h5 {
+  margin: 0 0 8px 0;
+  color: #4caf50;
+}
+
 .missing-ingredient {
   color: #ff4444;
   font-style: italic;
