@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from datetime import date
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 from .models import UserPreferences, MealPlan, Ingredient, DietaryPreference
 from .perception import PerceptionModule
@@ -19,10 +23,11 @@ app = FastAPI(title="Meal Planner API")
 # Configure CORS for Chrome extension
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["chrome-extension://*"],  # Allow Chrome extensions
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Initialize modules
@@ -31,24 +36,88 @@ memory = MemoryModule()
 decision_maker = DecisionMaker(memory)
 action = ActionModule()
 
+@app.get("/")
+async def root():
+    """Redirect to API documentation."""
+    return RedirectResponse(url="/docs")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": jsonable_encoder(exc.errors())
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": str(exc.detail),
+            "status_code": exc.status_code
+        }
+    )
+
+# Request model for meal plan generation
+class MealPlanRequest(BaseModel):
+    raw_ingredients: List[str] = Field(
+        ..., 
+        min_items=1, 
+        description="List of ingredients with quantities",
+        example=["2 cups rice", "500 grams chicken", "4 pieces tomatoes"]
+    )
+    dietary_preference: DietaryPreference = Field(
+        default=DietaryPreference.NONE,
+        description="Dietary preference"
+    )
+    api_key: str = Field(
+        ..., 
+        min_length=1, 
+        description="Gemini API key"
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "raw_ingredients": [
+                    "2 cups rice",
+                    "500 grams chicken",
+                    "4 pieces tomatoes"
+                ],
+                "dietary_preference": "NONE",
+                "api_key": "your-api-key-here"
+            }
+        }
+
 @app.post("/api/generate-meal-plan")
-async def generate_meal_plan(
-    raw_ingredients: List[str],
-    dietary_preference: DietaryPreference = DietaryPreference.NONE,
-    max_preparation_time: Optional[int] = None,
-    excluded_ingredients: List[str] = []
-) -> MealPlan:
+async def generate_meal_plan(request: MealPlanRequest) -> MealPlan:
     """Generate a daily meal plan based on available ingredients and preferences."""
     try:
+        # Validate ingredients format
+        if not all(isinstance(ing, str) for ing in request.raw_ingredients):
+            raise HTTPException(
+                status_code=422,
+                detail="All ingredients must be strings"
+            )
+
         # Parse ingredients
-        ingredients = perception.parse_ingredients(raw_ingredients)
+        try:
+            ingredients = perception.parse_ingredients(request.raw_ingredients)
+        except Exception as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Failed to parse ingredients: {str(e)}"
+            )
         
         # Create user preferences
         preferences = UserPreferences(
-            dietary_preference=dietary_preference,
+            dietary_preference=request.dietary_preference,
             available_ingredients=ingredients,
-            excluded_ingredients=excluded_ingredients,
-            max_preparation_time=max_preparation_time
+            excluded_ingredients=[],
+            max_preparation_time=None
         )
         
         # Generate suitable recipes
@@ -84,6 +153,8 @@ async def generate_meal_plan(
         
         return meal_plan
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

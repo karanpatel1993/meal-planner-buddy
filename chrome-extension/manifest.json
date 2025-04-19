@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Meal Planner Pro",
+  "name": "Indian Meal Planner",
   "version": "1.0",
-  "description": "Generate daily Indian meal plans using Gemini AI",
+  "description": "Generate daily Indian meal plans using available ingredients",
   "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8000/*", "http://localhost:8000/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

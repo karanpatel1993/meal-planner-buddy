@@ -64,5 +64,46 @@ class PerceptionModule:
                 preparation_time=60,
                 dietary_preferences=[DietaryPreference.NONE]
             ),
-            # Add more mock recipes as needed
+            Recipe(
+                id="3",
+                name="Vegetable Biryani",
+                meal_type="lunch",
+                description="Fragrant rice dish with mixed vegetables and aromatic spices",
+                required_ingredients=[
+                    Ingredient(name="rice", quantity=2, unit="cups"),
+                    Ingredient(name="mixed vegetables", quantity=500, unit="grams"),
+                    Ingredient(name="onions", quantity=2, unit="pieces"),
+                ],
+                instructions=["Cook rice", "Prepare vegetables", "Layer and steam"],
+                preparation_time=50,
+                dietary_preferences=[DietaryPreference.VEGETARIAN, DietaryPreference.VEGAN]
+            ),
+            Recipe(
+                id="4",
+                name="Palak Paneer",
+                meal_type="dinner",
+                description="Cottage cheese cubes in creamy spinach gravy",
+                required_ingredients=[
+                    Ingredient(name="spinach", quantity=500, unit="grams"),
+                    Ingredient(name="paneer", quantity=200, unit="grams"),
+                    Ingredient(name="onions", quantity=2, unit="pieces"),
+                ],
+                instructions=["Blanch spinach", "Prepare gravy", "Cook paneer"],
+                preparation_time=40,
+                dietary_preferences=[DietaryPreference.VEGETARIAN]
+            ),
+            Recipe(
+                id="5",
+                name="Poha",
+                meal_type="breakfast",
+                description="Flattened rice with peanuts and spices",
+                required_ingredients=[
+                    Ingredient(name="poha", quantity=2, unit="cups"),
+                    Ingredient(name="peanuts", quantity=0.5, unit="cup"),
+                    Ingredient(name="onions", quantity=1, unit="piece"),
+                ],
+                instructions=["Soak poha", "Roast peanuts", "Cook with spices"],
+                preparation_time=20,
+                dietary_preferences=[DietaryPreference.VEGETARIAN, DietaryPreference.VEGAN]
+            )
         ] 

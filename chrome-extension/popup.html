@@ -6,7 +6,7 @@
   </head>
   <body>
     <div class="container">
-      <h1>Meal Planner Pro</h1>
+      <h1>Daily Indian Meal Planner</h1>
 
       <div class="form-section">
         <label for="apiKey">Gemini API Key:</label>
@@ -16,7 +16,7 @@
           placeholder="Enter your Gemini API key"
         />
 
-        <label for="startDate">Start Date:</label>
+        <label for="startDate">Date:</label>
         <input type="date" id="startDate" />
 
         <label for="dietaryPrefs">Dietary Preferences:</label>
@@ -32,15 +32,18 @@
         <textarea
           id="ingredients"
           placeholder="Enter ingredients with quantities:
-2 chicken breasts
-1 cup rice
-500g potatoes"
+2 cups rice
+500 grams chicken
+4 pieces tomatoes"
         ></textarea>
 
         <button id="generatePlan">Generate Meal Plan</button>
       </div>
 
-      <div id="loadingSpinner" class="hidden">Generating your meal plan...</div>
+      <div id="loadingSpinner" class="hidden">
+        <div class="spinner"></div>
+        <p>Generating your meal plan...</p>
+      </div>
 
       <div id="mealPlanResults" class="hidden">
         <h2>Your Daily Meal Plan</h2>

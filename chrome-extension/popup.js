@@ -1,5 +1,6 @@
 class MealPlanner {
   constructor() {
+    this.apiUrl = "http://127.0.0.1:8000"; // Backend API URL
     this.apiKey = "";
     this.initializeElements();
     this.attachEventListeners();
@@ -44,7 +45,7 @@ class MealPlanner {
     this.showLoading(true);
 
     try {
-      const mealPlan = await this.callGeminiAPI();
+      const mealPlan = await this.callBackendAPI();
       this.displayMealPlan(mealPlan);
     } catch (error) {
       console.error("Detailed error:", error);
@@ -70,170 +71,108 @@ class MealPlanner {
     return true;
   }
 
-  async callGeminiAPI() {
-    const prompt = this.constructPrompt();
-
+  async callBackendAPI() {
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
+      // Format ingredients as an array of strings
+      const ingredients = this.ingredientsTextarea.value
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+      console.log("Sending request with data:", {
+        raw_ingredients: ingredients,
+        dietary_preference: this.dietaryPrefsSelect.value,
+        api_key: "HIDDEN",
+      });
+
+      const response = await fetch(`${this.apiUrl}/api/generate-meal-plan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          raw_ingredients: ingredients,
+          dietary_preference: this.dietaryPrefsSelect.value,
+          api_key: this.apiKey,
+        }),
+      });
+
+      const responseData = await response.json();
+      console.log("Response:", responseData);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `API Error: ${response.status} - ${JSON.stringify(errorData)}`
-        );
+        let errorMessage = `API Error: ${response.status}`;
+        if (responseData.detail) {
+          errorMessage += ` - ${responseData.detail}`;
+        } else if (typeof responseData === "object") {
+          errorMessage += ` - ${JSON.stringify(responseData)}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
-      return this.parseMealPlanResponse(data);
+      return responseData;
     } catch (error) {
-      console.error("API call details:", error);
+      console.error("Full error object:", error);
+      if (error.message.includes("Failed to fetch")) {
+        throw new Error(
+          "Cannot connect to the backend server. Please make sure the server is running at " +
+            this.apiUrl
+        );
+      }
       throw error;
     }
   }
 
-  constructPrompt() {
-    const ingredients = this.ingredientsTextarea.value;
-    const dietaryPrefs = this.dietaryPrefsSelect.value;
-    const startDate = this.startDateInput.value;
-
-    return `Generate a one-day Indian meal plan for ${startDate} with the following parameters:
-    Available Ingredients: ${ingredients}
-    Dietary Preferences: ${dietaryPrefs}
-    
-    Please provide authentic Indian cuisine for:
-    1. Breakfast: Traditional Indian breakfast dishes (e.g., idli, dosa, poha, paratha)
-    2. Lunch: Complete Indian thali with main dish, dal, rice/roti, and accompaniments
-    3. Dinner: Balanced Indian dinner menu
-    
-    For each meal:
-    - Provide authentic Indian recipe names (with English translations if needed)
-    - List which ingredients from the provided list will be used
-    - Highlight any missing ingredients needed for each recipe
-    - Include brief cooking instructions
-    
-    Format the response as JSON with this structure:
-    {
-      "mealPlan": [
-        {
-          "date": "YYYY-MM-DD",
-          "meals": {
-            "breakfast": {
-              "recipe": "Recipe name",
-              "description": "Brief description",
-              "usedIngredients": ["ingredient1", "ingredient2"],
-              "missingIngredients": ["ingredient3", "ingredient4"],
-              "instructions": "Brief cooking steps"
-            },
-            "lunch": {...},
-            "dinner": {...}
-          }
-        }
-      ],
-      "shoppingList": ["ingredient1", "ingredient2"]
-    }`;
-  }
-
-  parseMealPlanResponse(data) {
-    try {
-      console.log("Raw API response:", data);
-
-      if (
-        !data.candidates ||
-        !data.candidates[0] ||
-        !data.candidates[0].content
-      ) {
-        console.error("Unexpected API response structure:", data);
-        throw new Error("Invalid API response structure");
-      }
-
-      let text = data.candidates[0].content.parts[0].text;
-
-      // Clean up the response by removing markdown code blocks
-      text = text
-        .replace(/```json\n?/g, "")
-        .replace(/```/g, "")
-        .trim();
-      console.log("Cleaned text to parse:", text);
-
-      const parsedData = JSON.parse(text);
-      console.log("Parsed data:", parsedData);
-
-      // Validate the required structure
-      if (!parsedData.mealPlan || !parsedData.shoppingList) {
-        throw new Error("Response missing required fields");
-      }
-
-      return parsedData;
-    } catch (error) {
-      console.error("Parse error details:", error);
-      throw new Error(`Failed to parse API response: ${error.message}`);
-    }
-  }
-
   displayMealPlan(mealPlan) {
-    this.mealPlanContainer.innerHTML = "";
+    const date = new Date(mealPlan.date).toLocaleDateString();
 
-    mealPlan.mealPlan.forEach((day) => {
-      const dayElement = this.createDayElement(day);
-      this.mealPlanContainer.appendChild(dayElement);
-    });
-
-    this.displayShoppingList(mealPlan.shoppingList);
-    this.mealPlanResults.classList.remove("hidden");
-  }
-
-  createDayElement(day) {
-    const dayDiv = document.createElement("div");
-    dayDiv.className = "day-plan";
-
-    const date = new Date(day.date).toLocaleDateString();
-    dayDiv.innerHTML = `
+    this.mealPlanContainer.innerHTML = `
       <h3>${date}</h3>
       <div class="meals">
-        ${this.createMealHTML("Breakfast", day.meals.breakfast)}
-        ${this.createMealHTML("Lunch", day.meals.lunch)}
-        ${this.createMealHTML("Dinner", day.meals.dinner)}
+        ${this.createMealHTML("Breakfast", mealPlan.breakfast)}
+        ${this.createMealHTML("Lunch", mealPlan.lunch)}
+        ${this.createMealHTML("Dinner", mealPlan.dinner)}
       </div>
     `;
 
-    return dayDiv;
+    this.displayShoppingList(mealPlan.shopping_list);
+    this.mealPlanResults.classList.remove("hidden");
   }
 
   createMealHTML(mealType, meal) {
     return `
       <div class="meal">
-        <h4>${mealType}: ${meal.recipe}</h4>
-        <p class="description">${meal.description}</p>
-        <p>Using: ${meal.usedIngredients.join(", ")}</p>
-        ${
-          meal.missingIngredients.length
-            ? `<p class="missing-ingredient">Missing: ${meal.missingIngredients.join(
-                ", "
-              )}</p>`
-            : ""
-        }
+        <h4>${mealType}: ${meal.recipe.name}</h4>
+        <p class="description">${meal.recipe.description}</p>
+        <div class="ingredients">
+          <h5>Using:</h5>
+          <ul>
+            ${meal.used_ingredients
+              .map((ing) => `<li>${ing.quantity} ${ing.unit} ${ing.name}</li>`)
+              .join("")}
+          </ul>
+          ${
+            meal.missing_ingredients.length
+              ? `
+            <h5>Missing:</h5>
+            <ul class="missing">
+              ${meal.missing_ingredients
+                .map(
+                  (ing) => `<li>${ing.quantity} ${ing.unit} ${ing.name}</li>`
+                )
+                .join("")}
+            </ul>
+          `
+              : ""
+          }
+        </div>
         <div class="instructions">
-          <h5>Cooking Instructions:</h5>
-          <p>${meal.instructions}</p>
+          <h5>Instructions:</h5>
+          <ol>
+            ${meal.recipe.instructions
+              .map((step) => `<li>${step}</li>`)
+              .join("")}
+          </ol>
         </div>
       </div>
     `;
@@ -242,7 +181,9 @@ class MealPlanner {
   displayShoppingList(shoppingList) {
     this.shoppingList.innerHTML = `
       <ul>
-        ${shoppingList.map((item) => `<li>${item}</li>`).join("")}
+        ${shoppingList
+          .map((item) => `<li>${item.quantity} ${item.unit} ${item.name}</li>`)
+          .join("")}
       </ul>
     `;
   }
