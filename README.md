@@ -1,107 +1,169 @@
-# Indian Meal Planner
+# Meal Planner Chrome Extension
 
-A Chrome extension with a Python backend for generating daily Indian meal plans based on available ingredients and dietary preferences.
+A Chrome extension that helps you generate meal plans based on available ingredients using Google's Gemini AI. The extension suggests recipes that make the best use of your ingredients while respecting your dietary preferences.
 
-## Architecture
+## Features
 
-The project uses a client-server architecture:
+- **AI-Powered Recipe Generation**: Uses Google's Gemini AI to create personalized recipes
+- **Ingredient-Based Planning**: Generate recipes based on ingredients you have
+- **Dietary Preferences**: Supports various dietary preferences:
+  - Vegetarian
+  - Vegan
+  - Keto
+  - Paleo
+- **Recipe Management**:
+  - Save favorite recipes
+  - View saved recipes
+  - Delete saved recipes
+- **User-Friendly Interface**:
+  - Clean, modern design
+  - Tabbed interface for generating and viewing saved recipes
+  - Clear error messages and loading states
+- **Secure API Key Management**:
+  - Secure storage of Gemini API key
+  - Hidden API key display with show/hide toggle
 
-1. Backend: FastAPI service that handles meal planning logic
-2. Frontend: Chrome extension that provides the user interface
+## Setup Instructions
 
-## Backend Setup
+### Prerequisites
 
-```bash
-cd backend
-pip install -r requirements.txt
+- Python 3.8 or higher
+- Node.js and npm (for development)
+- Google Chrome browser
+- Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
 
-# Run the server
-uvicorn app.main:app --reload
-```
+### Backend Setup
 
-The backend server will start at `http://localhost:8000`. You can access the API documentation at `http://localhost:8000/docs`.
+1. Navigate to the backend directory:
 
-### Features
+   ```bash
+   cd backend
+   ```
 
-- Modular Python backend with:
-  - Input parsing and recipe generation
-  - Memory management for avoiding meal repetition
-  - Intelligent meal selection based on preferences
-  - Shopping list generation
-- RESTful API endpoints
-- CORS support for Chrome extension
-- Automatic API documentation with Swagger UI
+2. Create a virtual environment:
 
-## Frontend Setup
+   ```bash
+   python -m venv venv
+   ```
 
-1. Open Chrome
-2. Go to `chrome://extensions/`
-3. Enable "Developer mode" (toggle in top right)
-4. Click "Load unpacked"
-5. Select the `frontend` directory
+3. Activate the virtual environment:
 
-### Features
+   - Windows:
+     ```bash
+     .\venv\Scripts\activate
+     ```
+   - macOS/Linux:
+     ```bash
+     source venv/bin/activate
+     ```
 
-- User-friendly interface for:
-  - Inputting available ingredients
-  - Setting dietary preferences
-  - Specifying maximum preparation time
-  - Excluding unwanted ingredients
-- Real-time meal plan generation
-- Detailed recipe display with:
-  - Ingredients used/missing
-  - Step-by-step instructions
-  - Consolidated shopping list
+4. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. Start the backend server:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+The backend server will run at `http://127.0.0.1:8000`
+
+### Chrome Extension Setup
+
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable "Developer mode" in the top right
+3. Click "Load unpacked" and select the `chrome-extension` directory
+4. The extension icon should appear in your Chrome toolbar
+
+## Usage
+
+1. **First-Time Setup**:
+
+   - Click the extension icon
+   - Enter your Gemini API key in the settings
+   - The API key will be securely saved for future use
+
+2. **Generating Meal Plans**:
+
+   - Enter your available ingredients (one per line)
+   - Format: `quantity unit name` (e.g., "2 cups rice")
+   - Select your dietary preference
+   - Click "Generate Meal Plan"
+
+3. **Managing Recipes**:
+   - Click "Save Recipe" on any generated recipe to save it
+   - Switch to the "Saved Recipes" tab to view saved recipes
+   - Use the "Delete Recipe" button to remove saved recipes
 
 ## API Endpoints
 
-### POST /api/generate-meal-plan
+The backend provides the following endpoints:
 
-Generate a daily meal plan based on:
+- `POST /api/generate-meal-plan`: Generate recipes based on ingredients
+- `GET /api/saved-recipes`: Get all saved recipes
+- `POST /api/save-recipe/{recipe_id}`: Save a recipe
+- `DELETE /api/delete-recipe/{recipe_id}`: Delete a saved recipe
 
-- List of available ingredients
-- Dietary preferences
-- Maximum preparation time
-- Excluded ingredients
+## Error Handling
 
-### GET /api/health
+The extension includes comprehensive error handling for:
 
-Health check endpoint for monitoring the service.
-
-## Requirements
-
-### Backend
-
-- Python 3.10+
-- FastAPI
-- Uvicorn
-- Pydantic
-- Python-dateutil
-- Python-dotenv
-- Google Generative AI (for future LLM integration)
-
-### Frontend
-
-- Google Chrome browser
-- Internet connection to backend service
+- Backend server connection issues
+- Invalid API keys
+- Missing or invalid ingredients
+- Recipe saving/deletion errors
+- API rate limiting
 
 ## Development
 
-1. Start the backend server:
+### Project Structure
 
-```bash
-cd backend
-uvicorn app.main:app --reload
+```
+meal-planner-buddy/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   └── perception.py
+│   └── requirements.txt
+└── chrome-extension/
+    ├── manifest.json
+    ├── popup.html
+    ├── popup.js
+    └── icons/
 ```
 
-2. Load the Chrome extension from the `frontend` directory.
+### Backend Development
 
-3. The extension will connect to the local backend service at `http://localhost:8000`.
+The backend is built with:
 
-## Deployment
+- FastAPI for the web framework
+- Pydantic for data validation
+- Google's Gemini AI for recipe generation
 
-For production:
+### Frontend Development
 
-1. Deploy the backend to a cloud service (e.g., Heroku, AWS, GCP)
-2. Update the `apiUrl` in `frontend/popup.js` to point to your deployed backend
-3. Package and distribute the Chrome extension
+The Chrome extension is built with:
+
+- Vanilla JavaScript
+- Chrome Extension APIs
+- Modern CSS with CSS Variables
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- Google Gemini AI for powering the recipe generation
+- FastAPI for the backend framework
+- Chrome Extensions API for making the frontend possible
