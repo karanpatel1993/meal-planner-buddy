@@ -2,6 +2,48 @@
 
 A Chrome extension that helps you generate meal plans based on available ingredients using Google's Gemini AI. The extension suggests recipes that make the best use of your ingredients while respecting your dietary preferences.
 
+## System Architecture
+
+The meal planner is built on four core modules that work together to provide intelligent meal planning capabilities:
+
+### 1. Perception Module (LLM)
+
+- Powered by Google's Gemini AI
+- Analyzes user inputs and ingredients
+- Understands dietary preferences and constraints
+- Generates creative and practical recipe suggestions
+- Validates ingredient combinations and proportions
+- Located in `backend/app/perception.py`
+
+### 2. Memory Module
+
+- Manages persistent storage of recipes
+- Handles saving and retrieving favorite recipes
+- Maintains user preferences and settings
+- Prevents duplicate recipe suggestions
+- Enables recipe history tracking
+- Located in `backend/app/memory.py`
+
+### 3. Decision-Making Module
+
+- Evaluates recipe suitability based on:
+  - Available ingredients
+  - Dietary restrictions
+  - Nutritional balance
+  - Preparation complexity
+- Prioritizes recipes based on ingredient utilization
+- Ensures recipe variety and balance
+- Located in `backend/app/decision.py`
+
+### 4. Action Module
+
+- Executes the recipe generation process
+- Handles API interactions and requests
+- Manages user interface updates
+- Processes user actions (save/delete recipes)
+- Coordinates between other modules
+- Located in `backend/app/action.py`
+
 ## Features
 
 - **AI-Powered Recipe Generation**: Uses Google's Gemini AI to create personalized recipes
@@ -138,9 +180,28 @@ meal-planner-buddy/
 
 The backend is built with:
 
-- FastAPI for the web framework
-- Pydantic for data validation
-- Google's Gemini AI for recipe generation
+- **FastAPI**: Modern web framework for building APIs
+
+  - High performance and automatic API documentation
+  - Built-in support for async operations
+  - OpenAPI (Swagger) integration
+
+- **Pydantic**: Data validation using Python type annotations
+
+  - Robust request/response model validation
+  - Automatic JSON schema generation
+  - Models:
+    - `MealPlanRequest`: Validates ingredient inputs and preferences
+    - `Recipe`: Ensures consistent recipe structure
+    - `Ingredient`: Validates ingredient quantities and units
+    - `UserPreferences`: Handles dietary preferences and API settings
+  - Type safety and automatic data conversion
+  - Integration with FastAPI for request/response validation
+
+- **Google's Gemini AI**: Advanced language model for recipe generation
+  - Creative recipe suggestions
+  - Natural language understanding
+  - Context-aware responses
 
 ### Frontend Development
 
