@@ -17,8 +17,11 @@ class MealPlanner {
     this.generateButton = document.getElementById("generateButton");
     this.resultsDiv = document.getElementById("results");
     this.savedRecipesDiv = document.getElementById("savedRecipes");
-    this.viewSavedButton = document.getElementById("viewSavedButton");
+    this.generateTab = document.getElementById("generateTab");
+    this.savedTab = document.getElementById("savedTab");
+    this.inputSection = document.getElementById("inputSection");
     this.messageDiv = document.getElementById("message");
+    this.togglePasswordButton = document.getElementById("togglePassword");
   }
 
   attachEventListeners() {
@@ -30,28 +33,60 @@ class MealPlanner {
     if (this.apiKeyInput) {
       this.apiKeyInput.addEventListener("change", () => this.saveApiKey());
     }
-    if (this.viewSavedButton) {
-      this.viewSavedButton.addEventListener("click", () =>
-        this.toggleSavedRecipes()
-      );
+
+    // Tab switching
+    if (this.generateTab) {
+      this.generateTab.addEventListener("click", () => this.showGenerateTab());
+    }
+    if (this.savedTab) {
+      this.savedTab.addEventListener("click", () => this.showSavedTab());
     }
 
     // Add event delegation for recipe cards
     document.addEventListener("click", (event) => {
       const target = event.target;
 
-      // Handle save recipe button clicks
       if (target.matches(".save-recipe-button")) {
         const recipeId = target.dataset.recipeId;
         this.saveRecipe(recipeId);
       }
 
-      // Handle delete recipe button clicks
       if (target.matches(".delete-recipe-button")) {
-        const recipeIndex = target.dataset.recipeIndex;
-        this.deleteRecipe(recipeIndex);
+        const recipeId = target.dataset.recipeId;
+        if (!recipeId) {
+          console.error("No recipe ID found for delete button");
+          this.showMessage(
+            "Error: Could not identify recipe to delete",
+            "error"
+          );
+          return;
+        }
+        this.deleteRecipe(recipeId);
       }
     });
+
+    if (this.togglePasswordButton) {
+      this.togglePasswordButton.addEventListener("click", () =>
+        this.togglePasswordVisibility()
+      );
+    }
+  }
+
+  showGenerateTab() {
+    this.generateTab.classList.add("active");
+    this.savedTab.classList.remove("active");
+    this.inputSection.style.display = "block";
+    this.resultsDiv.style.display = "block";
+    this.savedRecipesDiv.style.display = "none";
+  }
+
+  showSavedTab() {
+    this.generateTab.classList.remove("active");
+    this.savedTab.classList.add("active");
+    this.inputSection.style.display = "none";
+    this.resultsDiv.style.display = "none";
+    this.savedRecipesDiv.style.display = "block";
+    this.displaySavedRecipes();
   }
 
   async loadStoredApiKey() {
@@ -265,45 +300,63 @@ class MealPlanner {
       return;
     }
 
+    // Store the current recipes in memory
+    this._currentRecipes = recipes;
+    console.log("Stored current recipes:", this._currentRecipes);
+
     this.resultsDiv.innerHTML = `
-      <h2>Generated Recipes</h2>
-      ${recipes
-        .map((recipe, index) => {
-          if (!recipe) return "";
+      <div class="container">
+        <h2>Generated Recipes</h2>
+        ${recipes
+          .map((recipe, index) => {
+            if (!recipe) return "";
 
-          const ingredients =
-            recipe.required_ingredients || recipe.ingredients || [];
-          const instructions = recipe.instructions || [];
+            const ingredients =
+              recipe.required_ingredients || recipe.ingredients || [];
+            const instructions = recipe.instructions || [];
 
-          return `
-          <div class="recipe-card">
-            <h3>${recipe.name || "Unnamed Recipe"}</h3>
-            ${recipe.description ? `<p>${recipe.description}</p>` : ""}
-            <h4>Ingredients:</h4>
-            <ul>
-              ${ingredients
-                .map((ing) => {
-                  if (!ing) return "";
-                  return `<li>${ing.quantity} ${ing.unit} ${ing.name}</li>`;
-                })
-                .join("")}
-            </ul>
-            <h4>Instructions:</h4>
-            <ol>
-              ${instructions
-                .map((step) => {
-                  if (!step) return "";
-                  return `<li>${step}</li>`;
-                })
-                .join("")}
-            </ol>
-            <button class="save-button save-recipe-button" data-recipe-id="${index}">
-              Save Recipe
-            </button>
-          </div>
-        `;
-        })
-        .join("")}
+            // Check if this recipe is already saved
+            const isAlreadySaved = this.savedRecipes.some(
+              (saved) =>
+                saved.recipe.name === recipe.name &&
+                JSON.stringify(saved.recipe.required_ingredients) ===
+                  JSON.stringify(ingredients)
+            );
+
+            return `
+            <div class="recipe-card">
+              <h3>${recipe.name || "Unnamed Recipe"}</h3>
+              ${recipe.description ? `<p>${recipe.description}</p>` : ""}
+              <div class="recipe-details">
+                <h4>Ingredients:</h4>
+                <ul>
+                  ${ingredients
+                    .map(
+                      (ing) =>
+                        `<li>${ing.quantity} ${ing.unit} ${ing.name}</li>`
+                    )
+                    .join("")}
+                </ul>
+                <h4>Instructions:</h4>
+                <ol>
+                  ${instructions.map((step) => `<li>${step}</li>`).join("")}
+                </ol>
+                <button class="save-button save-recipe-button" 
+                  data-recipe-id="${index}"
+                  ${isAlreadySaved ? "disabled" : ""}
+                  style="${
+                    isAlreadySaved
+                      ? "background-color: #ccc; cursor: not-allowed;"
+                      : ""
+                  }">
+                  ${isAlreadySaved ? "Already Saved" : "Save Recipe"}
+                </button>
+              </div>
+            </div>
+          `;
+          })
+          .join("")}
+      </div>
     `;
   }
 
@@ -314,8 +367,8 @@ class MealPlanner {
     this.messageDiv.className = `message ${type}`;
     this.messageDiv.style.display = "block";
 
-    // Hide message after 5 seconds if it's a success message
-    if (type === "success") {
+    // Hide message after 5 seconds if it's a success or info message
+    if (type === "success" || type === "info") {
       setTimeout(() => {
         this.messageDiv.style.display = "none";
       }, 5000);
@@ -329,87 +382,197 @@ class MealPlanner {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
+      console.log("Loaded saved recipes:", data);
       this.savedRecipes = data;
+      this.displaySavedRecipes();
     } catch (error) {
       console.error("Error loading saved recipes:", error);
       this.savedRecipes = [];
+      this.showMessage("Failed to load saved recipes", "error");
     }
   }
 
   async saveRecipe(recipeId) {
     try {
+      console.log("Attempting to save recipe with ID:", recipeId);
+      console.log("Current recipes:", this._currentRecipes);
+
+      // Get the recipe data from the current results
+      const recipes = this._currentRecipes;
+      if (!recipes || !Array.isArray(recipes)) {
+        throw new Error("No recipes available");
+      }
+
+      const recipeToSave = recipes[recipeId];
+      console.log("Recipe to save:", recipeToSave);
+
+      if (!recipeToSave) {
+        throw new Error("Recipe not found");
+      }
+
+      // Check if recipe is already saved
+      const isDuplicate = this.savedRecipes.some(
+        (saved) =>
+          saved.recipe.name === recipeToSave.name &&
+          JSON.stringify(saved.recipe.required_ingredients) ===
+            JSON.stringify(recipeToSave.required_ingredients)
+      );
+
+      if (isDuplicate) {
+        this.showMessage(
+          "This recipe is already in your saved recipes",
+          "info"
+        );
+        return;
+      }
+
+      // Send the recipe ID along with the recipe data
       const response = await fetch(
         `${this.apiUrl}/api/save-recipe/${recipeId}`,
         {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(recipeToSave),
         }
       );
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Failed to save recipe");
+      const responseText = await response.text();
+      console.log("Save recipe response:", responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse response:", e);
+        throw new Error("Invalid response from server");
       }
 
-      await this.loadSavedRecipes();
+      if (!response.ok) {
+        throw new Error(data.detail || "Failed to save recipe");
+      }
+
+      await this.loadSavedRecipes(); // Reload the saved recipes from backend
       this.showMessage("Recipe saved successfully!", "success");
     } catch (error) {
+      console.error("Save recipe error:", error);
       this.showMessage(`Error saving recipe: ${error.message}`, "error");
     }
   }
 
-  toggleSavedRecipes() {
-    const inputSection = document.getElementById("inputSection");
-    const results = document.getElementById("results");
-    const savedRecipes = document.getElementById("savedRecipes");
-    const viewSavedButton = document.getElementById("viewSavedButton");
+  async deleteRecipe(recipeId) {
+    try {
+      console.log("Attempting to delete recipe with ID:", recipeId);
+      console.log("Current saved recipes:", this.savedRecipes);
 
-    if (savedRecipes.style.display === "none") {
-      inputSection.style.display = "none";
-      results.style.display = "none";
-      savedRecipes.style.display = "block";
-      viewSavedButton.textContent = "Back to Generator";
-      this.displaySavedRecipes();
-    } else {
-      inputSection.style.display = "block";
-      results.style.display = "block";
-      savedRecipes.style.display = "none";
-      viewSavedButton.textContent = "View Saved Recipes";
+      // Find the recipe in the saved recipes array
+      const recipeIndex = parseInt(recipeId, 10);
+      if (isNaN(recipeIndex)) {
+        throw new Error("Invalid recipe ID");
+      }
+
+      console.log("Deleting recipe at index:", recipeIndex);
+
+      const response = await fetch(
+        `${this.apiUrl}/api/delete-recipe/${recipeIndex}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const responseText = await response.text();
+      console.log("Delete recipe response:", responseText);
+
+      if (!response.ok) {
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.detail || "Failed to delete recipe";
+        } catch (e) {
+          errorMessage = "Failed to delete recipe";
+        }
+        throw new Error(errorMessage);
+      }
+
+      await this.loadSavedRecipes(); // Reload the saved recipes from backend
+      this.showMessage("Recipe deleted successfully", "success");
+    } catch (error) {
+      console.error("Delete recipe error:", error);
+      this.showMessage(`Error deleting recipe: ${error.message}`, "error");
     }
+  }
+
+  getCurrentRecipes() {
+    // Store the current recipes in memory
+    return this._currentRecipes || [];
   }
 
   displaySavedRecipes() {
-    const savedRecipesDiv = document.getElementById("savedRecipes");
-    savedRecipesDiv.innerHTML = "<h2>Saved Recipes</h2>";
+    if (!this.savedRecipesDiv) return;
 
-    if (this.savedRecipes.length === 0) {
-      savedRecipesDiv.innerHTML += "<p>No saved recipes yet.</p>";
+    if (!this.savedRecipes || this.savedRecipes.length === 0) {
+      this.savedRecipesDiv.innerHTML = `
+        <div class="container">
+          <h2>Saved Recipes</h2>
+          <p style="text-align: center; color: #666;">No saved recipes yet.</p>
+        </div>
+      `;
       return;
     }
 
-    this.savedRecipes.forEach((recipe, index) => {
-      const recipeCard = document.createElement("div");
-      recipeCard.className = "recipe-card";
-      recipeCard.innerHTML = `
-        <h3>${recipe.recipe.name || "Unnamed Recipe"}</h3>
-        <p><strong>Ingredients:</strong></p>
-        <p>${recipe.recipe.ingredients}</p>
-        <p><strong>Instructions:</strong></p>
-        <p>${recipe.recipe.instructions}</p>
-        <button class="save-button delete-recipe-button" data-recipe-index="${index}">Delete</button>
-      `;
-      savedRecipesDiv.appendChild(recipeCard);
-    });
+    console.log("Displaying saved recipes:", this.savedRecipes);
+
+    this.savedRecipesDiv.innerHTML = `
+      <div class="container">
+        <h2>Saved Recipes</h2>
+        ${this.savedRecipes
+          .map((saved, index) => {
+            console.log("Processing recipe:", saved);
+            return `
+            <div class="recipe-card">
+              <h3>${saved.recipe.name || "Unnamed Recipe"}</h3>
+              ${
+                saved.recipe.description
+                  ? `<p>${saved.recipe.description}</p>`
+                  : ""
+              }
+              <div class="recipe-details">
+                <h4>Ingredients:</h4>
+                <ul>
+                  ${saved.recipe.required_ingredients
+                    .map(
+                      (ing) =>
+                        `<li>${ing.quantity} ${ing.unit} ${ing.name}</li>`
+                    )
+                    .join("")}
+                </ul>
+                <h4>Instructions:</h4>
+                <ol>
+                  ${saved.recipe.instructions
+                    .map((step) => `<li>${step}</li>`)
+                    .join("")}
+                </ol>
+                <button class="save-button delete-recipe-button" data-recipe-id="${index}">
+                  Delete Recipe
+                </button>
+              </div>
+            </div>
+          `;
+          })
+          .join("")}
+      </div>
+    `;
   }
 
-  deleteRecipe(index) {
-    this.savedRecipes.splice(index, 1);
-    this.saveMealToStorage();
-    this.displaySavedRecipes();
-    this.showMessage("Recipe deleted successfully", "success");
-  }
-
-  saveMealToStorage() {
-    localStorage.setItem("savedRecipes", JSON.stringify(this.savedRecipes));
+  togglePasswordVisibility() {
+    const type = this.apiKeyInput.type === "password" ? "text" : "password";
+    this.apiKeyInput.type = type;
+    this.togglePasswordButton.textContent =
+      type === "password" ? "Show" : "Hide";
   }
 }
 
