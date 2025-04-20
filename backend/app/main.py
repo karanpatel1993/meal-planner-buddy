@@ -38,6 +38,9 @@ memory = MemoryModule()
 decision_maker = DecisionMaker(memory)
 action = ActionModule()
 
+# Connect memory to perception for recipe generation
+perception.set_memory(memory)
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

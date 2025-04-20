@@ -17,6 +17,11 @@ class PerceptionModule:
         }
         # Create SSL context with certifi certificates
         self.ssl_context = ssl.create_default_context(cafile=certifi.where())
+        self.memory = None  # Will be set by main.py
+
+    def set_memory(self, memory_module):
+        """Set the memory module for checking saved recipes."""
+        self.memory = memory_module
 
     def parse_ingredients(self, raw_ingredients: List[str]) -> List[Ingredient]:
         """Parse raw ingredient strings into Ingredient objects."""
@@ -52,10 +57,21 @@ class PerceptionModule:
         # Create prompt for recipe generation
         ingredients_text = "\n".join([f"{ing.quantity} {ing.unit} {ing.name}" for ing in preferences.available_ingredients])
         
-        prompt = f"""Generate 6 Indian recipes (2 breakfast, 2 lunch, 2 dinner) using these ingredients:
+        # Get saved recipe names to avoid duplicates
+        saved_recipe_names = []
+        if self.memory:
+            try:
+                saved_recipes = self.memory.get_saved_recipes()
+                saved_recipe_names = [recipe["recipe"]["name"].lower() for recipe in saved_recipes]
+            except Exception as e:
+                print(f"Warning: Could not get saved recipes: {e}")
+        
+        prompt = f"""Generate 6 unique Indian recipes (2 breakfast, 2 lunch, 2 dinner) using these ingredients:
 {ingredients_text}
 
 Dietary preference: {preferences.dietary_preference.value}
+
+{f'Please avoid these already saved recipes: {", ".join(saved_recipe_names)}' if saved_recipe_names else ''}
 
 Return ONLY a JSON object in this exact format, with NO trailing commas:
 {{
@@ -83,7 +99,8 @@ Important:
 2. Do not use trailing commas in arrays or objects
 3. Use only double quotes for strings
 4. Use decimal numbers for quantities (1.0, 2.5, etc.)
-5. Keep the JSON structure exactly as shown"""
+5. Keep the JSON structure exactly as shown
+6. Generate completely different recipes from the saved ones listed above"""
 
         try:
             # Prepare the request data
