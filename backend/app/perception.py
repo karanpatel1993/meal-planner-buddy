@@ -36,10 +36,16 @@ class PerceptionModule:
         """Generate recipes using Gemini API based on user preferences."""
         # Create prompt for recipe generation
         ingredients_text = "\n".join([f"{ing.quantity} {ing.unit} {ing.name}" for ing in preferences.available_ingredients])
-        prompt = f"""Generate 6 Indian recipes (2 breakfast, 2 lunch, 2 dinner) using these ingredients:
+        available_ingredients = [(ing.name.lower(), ing.quantity, ing.unit) for ing in preferences.available_ingredients]
+        
+        prompt = f"""Generate 6 Indian recipes (2 breakfast, 2 lunch, 2 dinner) using these AVAILABLE ingredients:
 {ingredients_text}
 
-Dietary preference: {preferences.dietary_preference.value}
+IMPORTANT REQUIREMENTS:
+1. At least 2 recipes MUST use the AVAILABLE ingredients listed above as their main ingredients
+2. For each recipe, clearly categorize ingredients into two sections:
+   - "available_ingredients": ingredients from the provided list above
+   - "additional_ingredients": any extra ingredients needed
 
 Return ONLY a JSON object in this exact format, with no additional text:
 {{
@@ -49,7 +55,14 @@ Return ONLY a JSON object in this exact format, with no additional text:
             "name": "Recipe Name",
             "meal_type": "breakfast|lunch|dinner",
             "description": "Brief description",
-            "required_ingredients": [
+            "available_ingredients": [
+                {{
+                    "name": "ingredient name",
+                    "quantity": 1.0,
+                    "unit": "unit"
+                }}
+            ],
+            "additional_ingredients": [
                 {{
                     "name": "ingredient name",
                     "quantity": 1.0,
@@ -60,7 +73,9 @@ Return ONLY a JSON object in this exact format, with no additional text:
             "preparation_time": 30
         }}
     ]
-}}"""
+}}
+
+Note: The "available_ingredients" section MUST ONLY include ingredients from the list provided above, using the exact same names."""
 
         try:
             # Prepare the request data
@@ -95,11 +110,9 @@ Return ONLY a JSON object in this exact format, with no additional text:
                         raise Exception(f"API request failed with status {response.status}: {error_text}")
                     
                     response_data = await response.json()
-                    print("Raw API Response:", response_data)  # Debug log
                     
                     # Extract the generated text
                     generated_text = response_data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
-                    print("Generated Text:", generated_text)  # Debug log
                     
                     # Clean up the text - remove any markdown and normalize whitespace
                     generated_text = generated_text.replace('```json\n', '').replace('\n```', '')
@@ -107,14 +120,11 @@ Return ONLY a JSON object in this exact format, with no additional text:
                     
                     # Parse the JSON response
                     try:
-                        # First try direct parsing
                         recipes_data = json.loads(generated_text)
                     except json.JSONDecodeError as e:
                         print(f"Initial JSON parsing failed: {str(e)}")
                         try:
-                            # Try cleaning the string more aggressively
                             import re
-                            # Remove any non-JSON characters
                             cleaned_text = re.sub(r'[^\x20-\x7E]', '', generated_text)
                             recipes_data = json.loads(cleaned_text)
                         except json.JSONDecodeError as e:
@@ -127,12 +137,32 @@ Return ONLY a JSON object in this exact format, with no additional text:
                     if not recipes_data["recipes"]:
                         raise Exception("No recipes were generated")
                     
+                    # Check if at least two recipes use the provided ingredients
+                    recipes_with_available_ingredients = 0
+                    for recipe in recipes_data["recipes"]:
+                        if "available_ingredients" in recipe and recipe["available_ingredients"]:
+                            # Check if the available ingredients match exactly with provided ones
+                            recipe_ingredients = {ing["name"].lower() for ing in recipe["available_ingredients"]}
+                            available_names = {name for name, _, _ in available_ingredients}
+                            if any(name in available_names for name in recipe_ingredients):
+                                recipes_with_available_ingredients += 1
+                    
+                    if recipes_with_available_ingredients < 2:
+                        raise Exception("Not enough recipes use the available ingredients. Please try again.")
+
                     # Convert JSON to Recipe objects
                     recipes = []
                     for recipe_data in recipes_data["recipes"]:
                         try:
+                            # Combine both available and additional ingredients
+                            all_ingredients = []
+                            if "available_ingredients" in recipe_data:
+                                all_ingredients.extend(recipe_data["available_ingredients"])
+                            if "additional_ingredients" in recipe_data:
+                                all_ingredients.extend(recipe_data["additional_ingredients"])
+                            
                             required_ingredients = [
-                                Ingredient(**ing) for ing in recipe_data["required_ingredients"]
+                                Ingredient(**ing) for ing in all_ingredients
                             ]
                             
                             recipe = Recipe(
