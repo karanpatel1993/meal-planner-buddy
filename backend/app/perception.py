@@ -10,6 +10,7 @@ import ssl
 class PerceptionModule:
     def __init__(self):
         self.recipe_database: List[Recipe] = []
+        self.last_generated_recipes: List[Recipe] = []
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
         self.headers = {
             "Content-Type": "application/json"
@@ -21,16 +22,30 @@ class PerceptionModule:
         """Parse raw ingredient strings into Ingredient objects."""
         parsed_ingredients = []
         for raw_ing in raw_ingredients:
-            # Simple parsing logic - in reality, would use more robust NLP
             parts = raw_ing.split()
-            if len(parts) >= 3:
-                quantity = float(parts[0])
-                unit = parts[1]
-                name = " ".join(parts[2:])
+            try:
+                if len(parts) >= 3:
+                    # Format: "quantity unit name"
+                    quantity = float(parts[0])
+                    unit = parts[1]
+                    name = " ".join(parts[2:])
+                else:
+                    # Format: "quantity name"
+                    quantity = float(parts[0])
+                    unit = "piece"  # Default unit for countable items
+                    name = " ".join(parts[1:])
+                
                 parsed_ingredients.append(
                     Ingredient(name=name, quantity=quantity, unit=unit)
                 )
+            except (ValueError, IndexError) as e:
+                raise ValueError(f"Failed to parse ingredient '{raw_ing}': {str(e)}")
+            
         return parsed_ingredients
+
+    async def get_last_generated_recipes(self) -> List[Recipe]:
+        """Get the list of recipes from the last generation."""
+        return self.last_generated_recipes
 
     async def generate_recipes(self, preferences: UserPreferences) -> List[Recipe]:
         """Generate recipes using Gemini API based on user preferences."""
@@ -42,7 +57,7 @@ class PerceptionModule:
 
 Dietary preference: {preferences.dietary_preference.value}
 
-Return ONLY a JSON object in this exact format:
+Return ONLY a JSON object in this exact format, with NO trailing commas:
 {{
     "recipes": [
         {{
@@ -50,25 +65,25 @@ Return ONLY a JSON object in this exact format:
             "name": "Recipe Name",
             "meal_type": "breakfast|lunch|dinner",
             "description": "Brief description",
-            "available_ingredients": [
+            "required_ingredients": [
                 {{
                     "name": "ingredient name",
-                    "quantity": 1.0,  # Use decimal numbers or whole numbers, not fractions
-                    "unit": "unit"    # Use "piece" for countable items without units
-                }}
-            ],
-            "additional_ingredients": [
-                {{
-                    "name": "ingredient name",
-                    "quantity": 1.0,  # Use decimal numbers or whole numbers, not fractions
-                    "unit": "unit"    # Use "piece" for countable items without units
+                    "quantity": 1.0,
+                    "unit": "unit"
                 }}
             ],
             "instructions": ["step 1", "step 2"],
             "preparation_time": 30
         }}
     ]
-}}"""
+}}
+
+Important:
+1. Do not include any text before or after the JSON
+2. Do not use trailing commas in arrays or objects
+3. Use only double quotes for strings
+4. Use decimal numbers for quantities (1.0, 2.5, etc.)
+5. Keep the JSON structure exactly as shown"""
 
         try:
             # Prepare the request data
@@ -82,7 +97,7 @@ Return ONLY a JSON object in this exact format:
                     "temperature": 0.7,
                     "topK": 40,
                     "topP": 0.95,
-                    "maxOutputTokens": 8192,
+                    "maxOutputTokens": 8192
                 }
             }
 
@@ -108,8 +123,19 @@ Return ONLY a JSON object in this exact format:
                     generated_text = response_data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
                     print("Generated text:", generated_text)  # Debug log
                     
-                    # Clean up the text - remove markdown code block indicators and whitespace
+                    # Clean up the text - remove markdown code block indicators, whitespace, and any text before/after JSON
                     generated_text = generated_text.replace('```json', '').replace('```', '').strip()
+                    
+                    # Try to find the JSON object boundaries
+                    start_idx = generated_text.find('{')
+                    end_idx = generated_text.rfind('}') + 1
+                    if start_idx == -1 or end_idx == 0:
+                        raise Exception("No valid JSON object found in response")
+                    
+                    generated_text = generated_text[start_idx:end_idx]
+                    
+                    # Remove any trailing commas before ] or }
+                    generated_text = generated_text.replace(',]', ']').replace(',}', '}')
                     
                     # Parse the JSON response
                     try:
@@ -128,28 +154,21 @@ Return ONLY a JSON object in this exact format:
                     recipes = []
                     for recipe_data in recipes_data["recipes"]:
                         try:
-                            # Combine available and additional ingredients
-                            all_ingredients = []
-                            if "available_ingredients" in recipe_data:
-                                all_ingredients.extend(recipe_data["available_ingredients"])
-                            if "additional_ingredients" in recipe_data:
-                                all_ingredients.extend(recipe_data["additional_ingredients"])
-                            
                             # Create Recipe object
                             recipe = Recipe(
-                                id=recipe_data["id"],
+                                id=str(recipe_data.get("id", "")),
                                 name=recipe_data["name"],
                                 meal_type=recipe_data["meal_type"],
-                                description=recipe_data["description"],
+                                description=recipe_data.get("description", ""),
                                 required_ingredients=[
                                     Ingredient(
                                         name=ing["name"],
-                                        quantity=float(eval(str(ing["quantity"]))) if isinstance(ing["quantity"], str) else float(ing["quantity"]),
-                                        unit=ing["unit"] if ing["unit"] else "piece"  # Default to "piece" if unit is empty
-                                    ) for ing in all_ingredients
+                                        quantity=float(ing["quantity"]),
+                                        unit=ing.get("unit", "piece")
+                                    ) for ing in recipe_data.get("required_ingredients", [])
                                 ],
-                                instructions=recipe_data["instructions"],
-                                preparation_time=recipe_data["preparation_time"],
+                                instructions=recipe_data.get("instructions", []),
+                                preparation_time=int(recipe_data.get("preparation_time", 30)),
                                 dietary_preferences=[preferences.dietary_preference]
                             )
                             recipes.append(recipe)
@@ -160,7 +179,11 @@ Return ONLY a JSON object in this exact format:
                     if not recipes:
                         raise Exception("Failed to create any valid recipes")
                     
+                    # Store the generated recipes
+                    self.last_generated_recipes = recipes
+                    
                     return recipes
                     
         except Exception as e:
+            self.last_generated_recipes = []  # Clear on error
             raise Exception(f"Failed to generate recipes: {str(e)}") 

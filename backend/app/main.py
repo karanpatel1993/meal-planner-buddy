@@ -4,12 +4,14 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import os
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+import logging
+import traceback
 
-from .models import UserPreferences, MealPlan, Ingredient, DietaryPreference
+from .models import UserPreferences, MealPlan, Ingredient, DietaryPreference, Recipe
 from .perception import PerceptionModule
 from .memory import MemoryModule
 from .decision_maker import DecisionMaker
@@ -36,6 +38,10 @@ memory = MemoryModule()
 decision_maker = DecisionMaker(memory)
 action = ActionModule()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @app.get("/")
 async def root():
     """Redirect to API documentation."""
@@ -55,123 +61,158 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "detail": str(exc.detail),
-            "status_code": exc.status_code
-        }
+        content={"detail": str(exc.detail)}
     )
 
 # Request model for meal plan generation
 class MealPlanRequest(BaseModel):
     raw_ingredients: List[str] = Field(
-        ..., 
-        min_items=1, 
-        description="List of ingredients with quantities",
-        example=["2 cups rice", "500 grams chicken", "4 pieces tomatoes"]
+        ...,  # This makes the field required
+        description="List of ingredients in the format 'quantity unit name'",
+        example=["2 cups rice", "1 lb chicken breast"]
     )
-    dietary_preference: DietaryPreference = Field(
-        default=DietaryPreference.NONE,
-        description="Dietary preference"
+    dietary_preference: str = Field(
+        ...,
+        description="Dietary preference for meal planning",
+        example="vegetarian"
     )
     api_key: str = Field(
-        ..., 
-        min_length=1, 
-        description="Gemini API key"
+        ...,
+        description="Gemini API key for recipe generation"
     )
 
 @app.post("/api/generate-meal-plan")
-async def generate_meal_plan(request: MealPlanRequest) -> MealPlan:
-    """Generate a daily meal plan based on available ingredients and preferences."""
+async def generate_meal_plan(request: MealPlanRequest):
+    """Generate a meal plan based on available ingredients and preferences."""
+    logger.info("Received meal plan generation request")
+    logger.info(f"Ingredients: {request.raw_ingredients}")
+    logger.info(f"Dietary preference: {request.dietary_preference}")
+    
     try:
-        # Parse ingredients
-        try:
-            ingredients = perception.parse_ingredients(request.raw_ingredients)
-            if not ingredients:
+        # Validate ingredients format
+        parsed_ingredients = []
+        for ingredient in request.raw_ingredients:
+            parts = ingredient.split()
+            if len(parts) < 2:  # Need at least quantity and name
+                logger.warning(f"Invalid ingredient format: {ingredient}")
                 raise HTTPException(
                     status_code=422,
-                    detail="No valid ingredients found. Please check the format: quantity unit name (e.g., '2 cups rice')"
+                    detail=f"Invalid ingredient format: '{ingredient}'. Expected format: 'quantity unit name' (e.g., '2 cups rice') or 'quantity name' (e.g., '2 carrots')"
                 )
-        except Exception as e:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Failed to parse ingredients: {str(e)}"
-            )
+            try:
+                quantity = float(parts[0])
+            except ValueError:
+                logger.warning(f"Invalid quantity in ingredient: {ingredient}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid quantity in ingredient: '{ingredient}'. Quantity must be a number."
+                )
+
+            # If only 2 parts (quantity and name), insert "piece" as the unit
+            if len(parts) == 2:
+                parts = [parts[0], "piece", parts[1]]
         
-        # Create user preferences
+        logger.info("Creating UserPreferences object")
+        # Create UserPreferences object
         preferences = UserPreferences(
             dietary_preference=request.dietary_preference,
-            available_ingredients=ingredients,
-            excluded_ingredients=[],
-            max_preparation_time=None,
+            available_ingredients=perception.parse_ingredients(request.raw_ingredients),
             api_key=request.api_key
         )
         
-        # Generate suitable recipes
+        # Generate meal plan using the perception module
         try:
-            available_recipes = await perception.generate_recipes(preferences)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate recipes: {str(e)}"
-            )
-        
-        if not available_recipes:
-            raise HTTPException(
-                status_code=404,
-                detail="No suitable recipes found for given preferences"
-            )
-        
-        # Select meals
-        try:
-            breakfast, lunch, dinner = decision_maker.select_meals(
-                available_recipes,
-                preferences
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to select meals: {str(e)}"
-            )
-        
-        # Create meal objects
-        try:
-            breakfast_meal = decision_maker.create_meal(breakfast, preferences.available_ingredients)
-            lunch_meal = decision_maker.create_meal(lunch, preferences.available_ingredients)
-            dinner_meal = decision_maker.create_meal(dinner, preferences.available_ingredients)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create meal objects: {str(e)}"
-            )
-        
-        # Generate meal plan
-        try:
-            meal_plan = action.generate_meal_plan(
-                current_date=date.today(),
-                breakfast=breakfast_meal,
-                lunch=lunch_meal,
-                dinner=dinner_meal
-            )
+            logger.info("Calling perception module to generate recipes")
+            recipes = await perception.generate_recipes(preferences)
             
-            # Store in memory
-            memory.store_meal_plan(meal_plan)
+            if not recipes:
+                logger.warning("No recipes generated")
+                raise HTTPException(
+                    status_code=404,
+                    detail="No suitable recipes found for the given ingredients and preferences"
+                )
             
-            return meal_plan
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to generate meal plan: {str(e)}"
-            )
-        
+            logger.info(f"Successfully generated {len(recipes)} recipes")
+            return {"recipes": recipes}
+            
+        except Exception as recipe_error:
+            error_trace = traceback.format_exc()
+            logger.error(f"Recipe generation error: {str(recipe_error)}\n{error_trace}")
+            
+            if "API request failed" in str(recipe_error):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Gemini API error: {str(recipe_error)}"
+                )
+            elif "Failed to parse recipe JSON" in str(recipe_error):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to parse recipe data: {str(recipe_error)}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error generating recipes: {str(recipe_error)}"
+                )
+            
     except HTTPException:
+        # Re-raise HTTP exceptions as they already have proper error details
         raise
+    except ValueError as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Validation error: {str(e)}\n{error_trace}")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_trace = traceback.format_exc()
+        logger.error(f"Unexpected error: {str(e)}\n{error_trace}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+@app.post("/api/save-recipe/{recipe_id}")
+async def save_recipe(recipe_id: str):
+    """Save a recipe to memory."""
+    try:
+        # Find the recipe in the last generated batch
+        recipes = await perception.get_last_generated_recipes()
+        
+        # Convert recipe_id to integer for array indexing
+        try:
+            recipe_index = int(recipe_id)
+            if recipe_index < 0 or recipe_index >= len(recipes):
+                raise ValueError("Invalid recipe index")
+            recipe = recipes[recipe_index]
+        except ValueError:
+            # If recipe_id is not a valid index, try matching by ID
+            recipe = next((r for r in recipes if r.id == recipe_id), None)
+            if not recipe:
+                raise HTTPException(status_code=404, detail="Recipe not found")
+
+        # Try to save the recipe
+        if memory.save_recipe(recipe):
+            return {"message": "Recipe saved successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Recipe already saved")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving recipe: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save recipe: {str(e)}")
+
+@app.get("/api/saved-recipes")
+async def get_saved_recipes() -> List[Dict[str, Any]]:
+    """Get all saved recipes."""
+    try:
+        return memory.get_saved_recipes()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve saved recipes: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
