@@ -79,33 +79,18 @@ class MealPlanRequest(BaseModel):
         description="Gemini API key"
     )
 
-    class Config:
-        schema_extra = {
-            "example": {
-                "raw_ingredients": [
-                    "2 cups rice",
-                    "500 grams chicken",
-                    "4 pieces tomatoes"
-                ],
-                "dietary_preference": "NONE",
-                "api_key": "your-api-key-here"
-            }
-        }
-
 @app.post("/api/generate-meal-plan")
 async def generate_meal_plan(request: MealPlanRequest) -> MealPlan:
     """Generate a daily meal plan based on available ingredients and preferences."""
     try:
-        # Validate ingredients format
-        if not all(isinstance(ing, str) for ing in request.raw_ingredients):
-            raise HTTPException(
-                status_code=422,
-                detail="All ingredients must be strings"
-            )
-
         # Parse ingredients
         try:
             ingredients = perception.parse_ingredients(request.raw_ingredients)
+            if not ingredients:
+                raise HTTPException(
+                    status_code=422,
+                    detail="No valid ingredients found. Please check the format: quantity unit name (e.g., '2 cups rice')"
+                )
         except Exception as e:
             raise HTTPException(
                 status_code=422,
@@ -117,11 +102,18 @@ async def generate_meal_plan(request: MealPlanRequest) -> MealPlan:
             dietary_preference=request.dietary_preference,
             available_ingredients=ingredients,
             excluded_ingredients=[],
-            max_preparation_time=None
+            max_preparation_time=None,
+            api_key=request.api_key
         )
         
         # Generate suitable recipes
-        available_recipes = perception.generate_recipes(preferences)
+        try:
+            available_recipes = await perception.generate_recipes(preferences)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate recipes: {str(e)}"
+            )
         
         if not available_recipes:
             raise HTTPException(
@@ -130,28 +122,46 @@ async def generate_meal_plan(request: MealPlanRequest) -> MealPlan:
             )
         
         # Select meals
-        breakfast, lunch, dinner = decision_maker.select_meals(
-            available_recipes,
-            preferences
-        )
+        try:
+            breakfast, lunch, dinner = decision_maker.select_meals(
+                available_recipes,
+                preferences
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to select meals: {str(e)}"
+            )
         
         # Create meal objects
-        breakfast_meal = decision_maker.create_meal(breakfast, preferences.available_ingredients)
-        lunch_meal = decision_maker.create_meal(lunch, preferences.available_ingredients)
-        dinner_meal = decision_maker.create_meal(dinner, preferences.available_ingredients)
+        try:
+            breakfast_meal = decision_maker.create_meal(breakfast, preferences.available_ingredients)
+            lunch_meal = decision_maker.create_meal(lunch, preferences.available_ingredients)
+            dinner_meal = decision_maker.create_meal(dinner, preferences.available_ingredients)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create meal objects: {str(e)}"
+            )
         
         # Generate meal plan
-        meal_plan = action.generate_meal_plan(
-            current_date=date.today(),
-            breakfast=breakfast_meal,
-            lunch=lunch_meal,
-            dinner=dinner_meal
-        )
-        
-        # Store in memory
-        memory.store_meal_plan(meal_plan)
-        
-        return meal_plan
+        try:
+            meal_plan = action.generate_meal_plan(
+                current_date=date.today(),
+                breakfast=breakfast_meal,
+                lunch=lunch_meal,
+                dinner=dinner_meal
+            )
+            
+            # Store in memory
+            memory.store_meal_plan(meal_plan)
+            
+            return meal_plan
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate meal plan: {str(e)}"
+            )
         
     except HTTPException:
         raise

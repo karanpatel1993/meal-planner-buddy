@@ -51,4 +51,5 @@ class UserPreferences(BaseModel):
     dietary_preference: DietaryPreference = DietaryPreference.NONE
     available_ingredients: List[Ingredient]
     excluded_ingredients: List[str] = Field(default_factory=list)
-    max_preparation_time: Optional[int] = None  # in minutes 
+    max_preparation_time: Optional[int] = None  # in minutes
+    api_key: str 
